@@ -38,11 +38,15 @@ export const TOOLS = [{ functionDeclarations: [
 const low = s => JSON.parse(JSON.stringify(s, (k, v) => k === 'type' && typeof v === 'string' ? v.toLowerCase() : v));
 export const OPENAI_TOOLS = TOOLS[0].functionDeclarations.map(d => ({ type: 'function', function: { name: d.name, description: d.description,
   parameters: d.parameters ? low(d.parameters) : { type: 'object', properties: {} } } }));
-export const MODELS = { deepseek: ['deepseek-v4-pro', 'deepseek-v4-flash'], gemini: ['gemini-3.1-pro-preview', 'gemini-3.8-flash', 'gemini-flash-latest', 'gemini-2.5-pro'] };
+export const MODELS = {
+  deepseek: ['deepseek-v4-pro', 'deepseek-v4-flash'],
+  gemini: ['gemini-3.1-pro-preview', 'gemini-3.8-flash', 'gemini-flash-latest', 'gemini-2.5-pro'],
+  nararouter: ['nemotron-3-ultra-free']
+};
 export function resolveSettings(store) {
   const s = { provider: 'deepseek', ...store.get('settings', {}) };
   if (!MODELS[s.provider]) s.provider = 'deepseek';
-  if (!s.model || !s.model.startsWith(s.provider)) s.model = MODELS[s.provider][0];
+  if (!MODELS[s.provider].includes(s.model)) s.model = MODELS[s.provider][0];
   return s;
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
