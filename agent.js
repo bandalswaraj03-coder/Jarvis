@@ -182,5 +182,13 @@ export function createAgent({ store, fetchFn = (...a) => fetch(...a), confirmFn 
   }
   return finish(reply, []);
 }
-  return { tools, run(history, mode = 'auto', deep = false) { const s = resolveSettings(store); return (s.provider === 'gemini' ? runGemini : runDeepseek)(history, mode, s, deep); } };
-}
+  return {
+  tools,
+  run(history, mode = 'auto', deep = false) {
+    const s = resolveSettings(store);
+    if (s.provider === 'nararouter') {
+      return runNaraRouter(history, mode, s, deep);
+    }
+    return (s.provider === 'gemini' ? runGemini : runDeepseek)(history, mode, s, deep);
+  }
+};
