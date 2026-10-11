@@ -1,4 +1,4 @@
-# JARVIS for iPhone (v0.2)
+# JARVIS for iPhone (v0.4: answer engine)
 A static web app (no server, no build). Your Gemini key lives only in your iPhone's browser storage and is sent only to Google.
 
 ## Put it on your iPhone (free, ~5 minutes)
@@ -23,3 +23,19 @@ Not built: website builder.
 
 ## Safety
 Anyone holding your unlocked phone can open the app. Set a spending cap/budget alert for your key in Google AI Studio/Cloud billing. Don't publish a copy of the app with the key filled in.
+
+## v0.3 changes
+- Pick the brain in Menu → Settings: **DeepSeek** (default; models `deepseek-v4-pro` / `deepseek-v4-flash`) or **Gemini**.
+- DeepSeek has no web search. Optional: also paste a Gemini key to enable live Google-grounded `research`. Without it, JARVIS uses a free Wikipedia tool for background knowledge only (not news).
+- Automatic retry on temporary "busy" errors (503/429). Quota/balance errors show immediately.
+- Fixed the white strip at the bottom of the screen.
+- **Unverified:** DeepSeek calls straight from Safari. If DeepSeek's server blocks browser requests you'll see "Request failed or was blocked by the browser"; the fix would be a tiny proxy.
+
+## Updating GitHub
+Replace these files in your repo (open each file → pencil icon, or upload again and overwrite): index.html, agent.js, sw.js, test.mjs, README.md.
+
+## v0.4: answer engine
+Tap **Deep** (bottom bar) or just ask a hard question. JARVIS plans 3 differently-angled searches (official sources, critics/corrections, base facts), runs them in parallel, cross-checks them, and answers with Verified vs Uncertain plus sources.
+- Needs a Gemini key (its Google Search grounding does the retrieval), even if DeepSeek is the brain. About 4 Gemini calls per deep question, so it costs more and is slower.
+- Update on GitHub: index.html, agent.js, sw.js, test.mjs, README.md.
+- **Unverified:** real Google grounding calls, and answer quality on real questions.

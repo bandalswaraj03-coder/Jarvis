@@ -1,4 +1,4 @@
-const C = 'jarvis-ios-v1';
+const C = 'jarvis-ae-v1';
 self.addEventListener('install', e => { e.waitUntil(caches.open(C).then(c => c.addAll(['./', './agent.js']))); self.skipWaiting(); });
 self.addEventListener('fetch', e => {
   const u = new URL(e.request.url);

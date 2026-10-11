@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { createAgent, createStore, studySummary } from './agent.js';
+import { createAgent, createStore, studySummary, resolveSettings } from './agent.js';
 const mem = () => { const m = {}; return { getItem: k => m[k] ?? null, setItem: (k, v) => { m[k] = v; } }; };
 const mk = (script, extra = {}) => {
-  const store = createStore(mem()); store.set('settings', { key: 'K' }); const calls = [];
+  const store = createStore(mem()); store.set('settings', { key: 'K', provider: 'gemini' }); const calls = [];
   const fetchFn = async (url, o) => { const b = JSON.parse(o.body); calls.push({ url, b, h: o.headers });
     return { ok: true, json: async () => script(b, calls.length) }; };
   return { store, calls, agent: createAgent({ store, fetchFn, ...extra }) };
@@ -51,4 +51,58 @@ test('missing key and step limit', async () => {
   await assert.rejects(a.run([{ role: 'user', content: 'hi' }]), /API key/);
   const { agent } = mk(() => reply([{ functionCall: { name: 'now', args: {} } }]));
   assert.match((await agent.run([{ role: 'user', content: 'x' }])).reply, /step limit/);
+});
+
+const dsMk = (script, settings = {}) => { const store = createStore(mem()); store.set('settings', { provider: 'deepseek', dsKey: 'DK', ...settings }); const calls = [];
+  const fetchFn = async (url, o) => { const b = o?.body ? JSON.parse(o.body) : null; calls.push({ url, b, h: o?.headers }); const r = script(url, b, calls.length); return { ok: r.status ? false : true, status: r.status || 200, json: async () => r.body ?? r }; };
+  return { store, calls, agent: createAgent({ store, fetchFn }) }; };
+test('deepseek tool loop with reasoning preserved', async () => {
+  const { agent, calls } = dsMk((u, b, n) => n === 1
+    ? { choices: [{ message: { role: 'assistant', content: null, reasoning_content: 'thinking', tool_calls: [{ id: 'c1', type: 'function', function: { name: 'calculate', arguments: '{"expression":"6*7"}' } }] } }] }
+    : { choices: [{ message: { role: 'assistant', content: 'Answer 42' } }] });
+  const r = await agent.run([{ role: 'user', content: 'x' }]);
+  assert.equal(r.reply, 'Answer 42'); assert.equal(calls[0].url, 'https://api.deepseek.com/chat/completions');
+  assert.equal(calls[0].h.authorization, 'Bearer DK'); assert.equal(calls[0].b.model, 'deepseek-v4-pro');
+  assert.equal(calls[0].b.tools[0].function.parameters.type, 'object');
+  const m = calls[1].b.messages; assert.equal(m.at(-2).reasoning_content, 'thinking');
+  assert.equal(JSON.parse(m.at(-1).content).result, 42); assert.equal(m.at(-1).tool_call_id, 'c1');
+});
+test('research needs gemini key under deepseek; wikipedia works', async () => {
+  const { agent } = dsMk((u) => ({ query: { pages: { 1: { index: 1, title: 'Polity', pageid: 7, extract: 'Text' } } } }));
+  assert.match((await agent.tools.research({ query: 'q' })).error, /Gemini key/);
+  const w = await agent.tools.wikipedia({ topic: 'polity' });
+  assert.equal(w.results[0].title, 'Polity'); assert.match(w.sources[0].url, /curid=7/);
+});
+test('retries on 503 but not on quota errors', async () => {
+  let n = 0; const ok = dsMk(() => ++n === 1 ? { status: 503, body: { error: { message: 'busy' } } } : { choices: [{ message: { content: 'ok' } }] });
+  assert.equal((await ok.agent.run([{ role: 'user', content: 'x' }])).reply, 'ok');
+  const q = dsMk(() => ({ status: 429, body: { error: { message: 'quota limit: 0' } } }));
+  await assert.rejects(q.agent.run([{ role: 'user', content: 'x' }]), /quota/); assert.equal(q.calls.length, 1);
+});
+test('settings resolve: model follows provider', () => {
+  const s = createStore(mem()); s.set('settings', { key: 'g', model: 'gemini-flash-latest' });
+  assert.deepEqual([resolveSettings(s).provider, resolveSettings(s).model], ['deepseek', 'deepseek-v4-pro']);
+  s.set('settings', { provider: 'gemini', model: 'gemini-flash-latest' }); assert.equal(resolveSettings(s).model, 'gemini-flash-latest');
+});
+
+test('deep_research: plans, runs parallel searches, merges + dedupes sources', async () => {
+  const { agent, calls } = mk((b, n) => b.generationConfig?.responseMimeType
+    ? { candidates: [{ content: { parts: [{ text: '["official q","critics q","base q"]' }] } }] }
+    : b.tools?.[0]?.google_search
+      ? { candidates: [{ content: { parts: [{ text: 'finding for ' + b.contents[0].parts[0].text }] }, groundingMetadata: { groundingChunks: [{ web: { title: 'PIB', uri: 'https://pib.gov.in/a' } }] } }] }
+      : reply([{ text: 'x' }]));
+  const r = await agent.tools.deep_research({ question: 'Q?' }, 'upsc');
+  assert.deepEqual(r.searches, ['official q', 'critics q', 'base q']);
+  assert.equal(calls.filter(c => c.b.tools?.[0]?.google_search).length, 3);
+  assert.equal(r.sources.length, 1); assert.match(r.findings, /finding for critics q/);
+  assert.match(calls[0].b.contents[0].parts[0].text, /PIB, PRS/);
+});
+test('deep_research: bad plan falls back; no key errors; deep flag reaches prompt', async () => {
+  const { agent } = mk((b) => b.generationConfig?.responseMimeType ? { candidates: [{ content: { parts: [{ text: 'not json' }] } }] }
+    : b.tools?.[0]?.google_search ? { candidates: [{ content: { parts: [{ text: 'ok' }] } }] } : reply([{ text: 'x' }]));
+  assert.deepEqual((await agent.tools.deep_research({ question: 'Q' }, 'auto')).searches, ['Q']);
+  const d = dsMk(() => ({ choices: [{ message: { content: 'hi' } }] }));
+  assert.match((await d.agent.tools.deep_research({ question: 'Q' })).error, /Gemini key/);
+  await d.agent.run([{ role: 'user', content: 'x' }], 'auto', true);
+  assert.match(d.calls[0].b.messages[0].content, /DEEP MODE/);
 });

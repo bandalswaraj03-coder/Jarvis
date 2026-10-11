@@ -5,7 +5,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="apple-touch-icon" href="icon-180.png">
 <style>
 :root{--bg:#04070d;--cy:#4de2ff;--am:#ffb347;--tx:#d8f3fa;--mut:#7a9ba7;--pn:rgba(77,226,255,.07);--bd:rgba(77,226,255,.28)}
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}html,body{height:100%;margin:0;overscroll-behavior:none}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}html{background:#04070d}html,body{margin:0;overscroll-behavior:none}body{height:100dvh}
 body{background:radial-gradient(ellipse at 50% -5%,#0c2638 0,var(--bg) 62%);color:var(--tx);font:16px/1.5 -apple-system,system-ui,sans-serif;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top)}
 header{display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--bd)}
 .ring{width:38px;height:38px}.ring .a{transform-origin:50px 50px;animation:s 14s linear infinite}.ring .b{transform-origin:50px 50px;animation:s 9s linear infinite reverse}
@@ -31,21 +31,23 @@ button.on{border-color:var(--cy);background:rgba(77,226,255,.2)}button.am.on{bor
 <header id="hd"><svg class="ring" viewBox="0 0 100 100" fill="none" stroke="#4de2ff"><circle class="a" cx="50" cy="50" r="44" stroke-width="3" stroke-dasharray="20 9"/><circle class="b" cx="50" cy="50" r="33" stroke="#ffb347" stroke-width="2" stroke-dasharray="6 6"/><circle cx="50" cy="50" r="15" fill="#4de2ff" fill-opacity=".25" stroke-width="2"/></svg>
 <div><h1>J.A.R.V.I.S</h1><small id="st"></small></div><button id="menu">Menu</button></header>
 <main id="log"></main>
-<div id="bar"><button id="upsc" class="am">UPSC</button><button id="spk" class="am">🔈</button><span class="mut" id="act"></span></div>
+<div id="bar"><button id="upsc" class="am">UPSC</button><button id="deep" class="am">Deep</button><button id="spk" class="am">🔈</button><span class="mut" id="act"></span></div>
 <div id="comp"><button id="mic">🎤</button><input id="in" placeholder="Ask JARVIS…" enterkeyhint="send" autocomplete="off"><button id="go">Send</button></div>
 <div id="sheet"><button id="close">← Back</button>
 <h2>SETTINGS</h2><small>Your Gemini key is stored only in this phone's browser storage. It is sent only to Google.</small>
-<input id="key" type="password" placeholder="Gemini API key (AIza…)" autocomplete="off">
-<select id="model"><option>gemini-3.1-pro-preview</option><option>gemini-3.8-flash</option><option>gemini-flash-latest</option><option>gemini-2.5-pro</option></select>
+<select id="prov"><option value="deepseek">Brain: DeepSeek</option><option value="gemini">Brain: Gemini</option></select>
+<input id="dskey" type="password" placeholder="DeepSeek API key (sk-…)" autocomplete="off">
+<input id="key" type="password" placeholder="Gemini key (optional: live web search)" autocomplete="off">
+<select id="model"></select>
 <button id="saveset">Save settings</button>
 <h2>MEMORY</h2><div id="mems"></div><h2>UPSC PROGRESS</h2><div id="study" class="card"></div>
 <h2>DATA</h2><button id="wipe">Erase everything on this phone</button></div>
 <script type="module">
-import {createAgent,createStore,studySummary} from './agent.js';
+import {createAgent,createStore,studySummary,resolveSettings,MODELS} from './agent.js';
 const $=s=>document.querySelector(s),store=createStore(localStorage);
-let mode='auto',speak=false,hist=store.get('hist',[]);
+let mode='auto',speak=false,deep=false,hist=store.get('hist',[]);
 const agent=createAgent({store,confirmFn:async t=>confirm('JARVIS wants to remember:\n\n'+t+'\n\nSave this?'),
- onStep:(n,a)=>{$('#act').textContent=({research:'Searching the web…',calculate:'Calculating…',now:'Checking the time…',remember:'Asking to remember…',log_study:'Logging study…',study_progress:'Reading your progress…'})[n]||n}});
+ onStep:(n,a)=>{$('#act').textContent=({research:'Searching the web…',deep_research:'Researching from several angles…',wikipedia:'Checking Wikipedia…',calculate:'Calculating…',now:'Checking the time…',remember:'Asking to remember…',log_study:'Logging study…',study_progress:'Reading your progress…'})[n]||n}});
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const md=s=>esc(s).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/\n/g,'<br>');
 function add(role,t,o={}){const d=document.createElement('div');d.className='m '+role;d.innerHTML=md(t);
@@ -53,27 +55,30 @@ function add(role,t,o={}){const d=document.createElement('div');d.className='m '
  $('#log').append(d);d.scrollIntoView({block:'end'});return d}
 const say=t=>{if(!window.speechSynthesis)return;speechSynthesis.cancel();speechSynthesis.speak(new SpeechSynthesisUtterance(t.replace(/[*_#\[\]]/g,'')))};
 async function send(t){t=t.trim();if(!t)return;$('#in').value='';add('user',t);hist.push({role:'user',content:t});document.body.classList.add('busy');
- try{const r=await agent.run(hist,mode);hist.push({role:'assistant',content:r.reply});add('assistant',r.reply,{sources:r.sources});if(speak)say(r.reply)}
+ try{const r=await agent.run(hist,mode,deep);hist.push({role:'assistant',content:r.reply});add('assistant',r.reply,{sources:r.sources});if(speak)say(r.reply)}
  catch(e){hist.pop();add('assistant','⚠ '+e.message)}
  document.body.classList.remove('busy');$('#act').textContent='';store.set('hist',hist.slice(-40))}
 $('#go').onclick=()=>send($('#in').value);$('#in').onkeydown=e=>{if(e.key==='Enter')send($('#in').value)};
 $('#upsc').onclick=()=>{mode=mode==='upsc'?'auto':'upsc';$('#upsc').classList.toggle('on',mode==='upsc');$('#st').textContent=stat()};
+$('#deep').onclick=()=>{deep=!deep;$('#deep').classList.toggle('on',deep)};
 $('#spk').onclick=()=>{speak=!speak;$('#spk').classList.toggle('on',speak);if(!speak)speechSynthesis?.cancel()};
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 if(SR){const r=new SR();r.lang='en-IN';let on=0;r.onresult=e=>send(e.results[0][0].transcript);r.onend=()=>{on=0;$('#mic').classList.remove('on')};
  r.onerror=e=>add('assistant','Mic problem ('+e.error+'). Tap the 🎤 on the iPhone keyboard to dictate instead.');
  $('#mic').onclick=()=>{if(on)return r.stop();on=1;$('#mic').classList.add('on');try{r.start()}catch{}}}
 else $('#mic').onclick=()=>add('assistant','Voice input is not available in this mode. Tap the 🎤 on the iPhone keyboard to dictate.');
-const stat=()=>store.get('settings',{}).key?'ONLINE · '+(store.get('settings',{}).model||'gemini-3.1-pro-preview')+(mode==='upsc'?' · UPSC':''):'SETUP: Menu → Settings';
-function sheet(){const s=store.get('settings',{});$('#key').value=s.key||'';$('#model').value=s.model||'gemini-3.1-pro-preview';
+const stat=()=>{const s=resolveSettings(store);return (s.provider==='gemini'?s.key:s.dsKey)?'ONLINE · '+s.model+(mode==='upsc'?' · UPSC':''):'SETUP: Menu → Settings'};
+const fillModels=(p,m)=>{$('#model').innerHTML=MODELS[p].map(x=>'<option'+(x===m?' selected':'')+'>'+x+'</option>').join('')};
+$('#prov').onchange=()=>fillModels($('#prov').value);
+function sheet(){const s=resolveSettings(store);$('#key').value=s.key||'';$('#dskey').value=s.dsKey||'';$('#prov').value=s.provider;fillModels(s.provider,s.model);
  const ms=store.get('memories',[]);$('#mems').innerHTML=ms.length?'':'<span class="mut">Nothing saved. JARVIS asks before saving anything.</span>';
  ms.forEach(m=>{const c=document.createElement('div');c.className='card';c.innerHTML='<div>'+esc(m.text)+'</div>';
   const e=document.createElement('button');e.textContent='Edit';e.onclick=()=>{const v=prompt('Edit memory:',m.text);if(v){m.text=v;store.set('memories',ms);sheet()}};
   const x=document.createElement('button');x.textContent='Delete';x.onclick=()=>{if(confirm('Delete this memory?')){store.set('memories',ms.filter(y=>y!==m));sheet()}};c.append(e,x);$('#mems').append(c)});
  const p=studySummary(store);$('#study').innerHTML=p.sessions?`Sessions: ${p.sessions}<br>Total: ${p.totalMinutes} min · Last 7 days: ${p.last7DaysMinutes} min<br>Streak: ${p.streakDays} day(s)<br>`+Object.entries(p.minutesBySubject).map(([k,v])=>`${esc(k)}: ${v} min`).join('<br>'):'<span class="mut">Tell JARVIS what you studied (UPSC mode) and it logs it here.</span>'}
 $('#menu').onclick=()=>{sheet();$('#sheet').classList.add('open')};$('#close').onclick=()=>{$('#sheet').classList.remove('open');$('#st').textContent=stat()};
-$('#saveset').onclick=()=>{store.set('settings',{key:$('#key').value.trim(),model:$('#model').value});$('#st').textContent=stat();alert('Saved on this phone.')};
+$('#saveset').onclick=()=>{store.set('settings',{provider:$('#prov').value,dsKey:$('#dskey').value.trim(),key:$('#key').value.trim(),model:$('#model').value});$('#st').textContent=stat();alert('Saved on this phone.')};
 $('#wipe').onclick=()=>{if(confirm('Erase key, memories, study log and chats from this phone?')){localStorage.clear();location.reload()}};
-hist.forEach(m=>add(m.role,m.content));if(!hist.length)add('assistant','Good day. I am JARVIS. I can plan, search the live web with sources, calculate, remember what you approve, and coach your UPSC prep. Toggle **UPSC** for mentor mode.');
+hist.forEach(m=>add(m.role,m.content));if(!hist.length)add('assistant','Good day. I am JARVIS. I can plan, research with sources (turn on **Deep** for multi-angle cross-checked answers), calculate, remember what you approve, and coach your UPSC prep. Toggle **UPSC** for mentor mode.');
 $('#st').textContent=stat();if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script></body></html>
