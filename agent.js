@@ -160,5 +160,27 @@ export function createAgent({ store, fetchFn = (...a) => fetch(...a), confirmFn 
     }
     return finish(LIMIT, sources);
   }
+  async function runNaraRouter(history, mode, s, deep) {
+  const response = await post(
+    fetchFn,
+    'https://jarvi.bandalswaraj03.workers.dev/chat',
+    {},
+    {
+      messages: [
+        { role: 'system', content: system(mode, deep) },
+        ...history.slice(-20).map(m => ({
+          role: m.role,
+          content: m.content
+        }))
+      ]
+    }
+  );
+
+  const reply = response.choices?.[0]?.message?.content;
+  if (!reply) {
+    throw new Error(response.error?.message || 'Empty reply from NaraRouter');
+  }
+  return finish(reply, []);
+}
   return { tools, run(history, mode = 'auto', deep = false) { const s = resolveSettings(store); return (s.provider === 'gemini' ? runGemini : runDeepseek)(history, mode, s, deep); } };
 }
